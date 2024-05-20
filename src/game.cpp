@@ -8,9 +8,10 @@ Game::Game(std::size_t grid_width, std::size_t grid_height)
       random_w(0, static_cast<int>(grid_width - 1)),
       random_h(0, static_cast<int>(grid_height - 1)) {
   PlaceFood();
+  PlaceObstacles();
 }
 
-void Game::Run(Controller const &controller, Renderer &renderer,
+void Game::Run(Controller const &controller, Renderer &renderer, Scoreboard &scoreboard,
                std::size_t target_frame_duration) {
   Uint32 title_timestamp = SDL_GetTicks();
   Uint32 frame_start;
@@ -18,14 +19,17 @@ void Game::Run(Controller const &controller, Renderer &renderer,
   Uint32 frame_duration;
   int frame_count = 0;
   bool running = true;
+  bool paused = false;
 
   while (running) {
     frame_start = SDL_GetTicks();
 
     // Input, Update, Render - the main game loop.
-    controller.HandleInput(running, snake);
-    Update();
-    renderer.Render(snake, food);
+    controller.HandleInput(running, paused, snake);
+    if (!paused) {
+      Update();
+      renderer.Render(snake, food, obstacles);
+    }
 
     frame_end = SDL_GetTicks();
 
@@ -48,6 +52,7 @@ void Game::Run(Controller const &controller, Renderer &renderer,
       SDL_Delay(target_frame_duration - frame_duration);
     }
   }
+  scoreboard.AddScore(score);
 }
 
 void Game::PlaceFood() {
@@ -55,12 +60,26 @@ void Game::PlaceFood() {
   while (true) {
     x = random_w(engine);
     y = random_h(engine);
-    // Check that the location is not occupied by a snake item before placing
-    // food.
-    if (!snake.SnakeCell(x, y)) {
+    // Check that the location is not occupied by a snake or obstacle before placing food.
+    if (!snake.SnakeCell(x, y) && !ObstacleCell(x, y)) {
       food.x = x;
       food.y = y;
       return;
+    }
+  }
+}
+
+void Game::PlaceObstacles() {
+  int num_obstacles = 5; // You can change the number of obstacles here
+  for (int i = 0; i < num_obstacles; ++i) {
+    SDL_Point obstacle;
+    while (true) {
+      obstacle.x = random_w(engine);
+      obstacle.y = random_h(engine);
+      if (!snake.SnakeCell(obstacle.x, obstacle.y) && !ObstacleCell(obstacle.x, obstacle.y)) {
+        obstacles.push_back(obstacle);
+        break;
+      }
     }
   }
 }
@@ -81,7 +100,23 @@ void Game::Update() {
     snake.GrowBody();
     snake.speed += 0.02;
   }
+
+  // Check if snake collides with any obstacle
+  for (auto const &obstacle : obstacles) {
+    if (new_x == obstacle.x && new_y == obstacle.y) {
+      snake.alive = false;
+    }
+  }
 }
 
 int Game::GetScore() const { return score; }
 int Game::GetSize() const { return snake.size; }
+
+bool Game::ObstacleCell(int x, int y) {
+  for (auto const &obstacle : obstacles) {
+    if (x == obstacle.x && y == obstacle.y) {
+      return true;
+    }
+  }
+  return false;
+}
